@@ -1,0 +1,12 @@
+{
+  "domain": "nacka_energi",
+  "name": "Nacka Energi",
+  "codeowners": ["@selleronom"],
+  "config_flow": true,
+  "documentation": "https://github.com/selleronom/nacka-energi",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/selleronom/nacka-energi/issues",
+  "requirements": ["aiohttp>=3.8.0"],
+  "version": "2.0.0"
+}

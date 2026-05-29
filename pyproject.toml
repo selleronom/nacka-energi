@@ -1,0 +1,13 @@
+[project]
+name = "nacka_energi"
+version = "2.0.0"
+description = "Home Assistant custom integration for the Nacka Energi customer portal"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["aiohttp", "homeassistant"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "pytest-homeassistant-custom-component"]

@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nacka Energi Login",
+        "description": "Enter your Nacka Energi portal credentials.",
+        "data": {
+          "username": "Username (email)",
+          "password": "Password"
+        }
+      },
+      "entity": {
+        "title": "Select User Entity",
+        "description": "Choose the user entity to associate with this integration.",
+        "data": {
+          "entity_id": "User entity"
+        }
+      },
+      "metering_point": {
+        "title": "Select Metering Point",
+        "description": "Choose the metering point to monitor.",
+        "data": {
+          "metering_point": "Metering point"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Nacka Energi",
+        "description": "Enter the new password for {username}.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Nacka Energi portal.",
+      "invalid_auth": "Invalid username or password.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This metering point is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "hourly_usage": {
+        "name": "Hourly energy usage"
+      },
+      "daily_usage": {
+        "name": "Daily energy usage"
+      },
+      "monthly_usage": {
+        "name": "Monthly energy usage"
+      },
+      "monthly_usage_current": {
+        "name": "Current month energy usage"
+      },
+      "yearly_usage": {
+        "name": "Yearly energy usage"
+      },
+      "latest_invoice_amount": {
+        "name": "Latest invoice amount"
+      },
+      "latest_invoice_balance": {
+        "name": "Latest invoice balance"
+      },
+      "latest_invoice_due_date": {
+        "name": "Latest invoice due date"
+      },
+      "latest_invoice_status": {
+        "name": "Latest invoice status"
+      },
+      "user_email": {
+        "name": "User email"
+      },
+      "user_phone": {
+        "name": "User phone"
+      }
+    }
+  }
+}

@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import zoneinfo
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    get_last_statistics,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import (
     ConsumptionEntry,
@@ -19,7 +28,15 @@ from .api import (
     NackaEnergiRateLimitError,
     UserProperties,
 )
-from .const import LOGGER, PERIOD_TYPE_DAILY, PERIOD_TYPE_HOURLY, PERIOD_TYPE_MONTHLY
+from .const import (
+    DOMAIN,
+    LOGGER,
+    PERIOD_TYPE_DAILY,
+    PERIOD_TYPE_HOURLY,
+    PERIOD_TYPE_MONTHLY,
+)
+
+_PORTAL_TZ = zoneinfo.ZoneInfo("Europe/Stockholm")
 
 
 @dataclass
@@ -79,9 +96,10 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             previous.user_properties if previous else None
         )
         errors: list[str] = []
+        all_hourly: list[ConsumptionEntry] = []
 
         try:
-            hourly = await self._fetch_hourly_usage()
+            hourly, all_hourly = await self._fetch_hourly_usage()
         except NackaEnergiAuthError as err:
             raise ConfigEntryAuthFailed(
                 "Authentication failed, please reconfigure"
@@ -164,6 +182,12 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
                 "; ".join(errors),
             )
 
+        if all_hourly:
+            try:
+                await self._inject_hourly_statistics(all_hourly)
+            except Exception as err:  # noqa: BLE001
+                LOGGER.warning("Failed to inject hourly statistics: %s", err)
+
         return NackaEnergiData(
             hourly_usage=hourly,
             daily_usage=daily,
@@ -172,6 +196,72 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             yearly_usage_kwh=yearly,
             latest_invoice=latest_invoice,
             user_properties=user_properties,
+        )
+
+    async def _inject_hourly_statistics(
+        self, ok_entries: list[ConsumptionEntry]
+    ) -> None:
+        """Inject all available OK hourly entries into HA's statistics recorder.
+
+        Uses ``async_add_external_statistics`` so each hour's energy lands at
+        its actual timestamp in the energy dashboard, regardless of when the
+        coordinator polled. The running sum is continued from whatever the
+        recorder already holds, so re-runs are idempotent.
+        """
+        statistic_id = f"{DOMAIN}:{self.config_entry.unique_id}_hourly_energy"
+
+        recorder = get_instance(self.hass)
+        last_stats = await recorder.async_add_executor_job(
+            get_last_statistics,
+            self.hass,
+            1,
+            statistic_id,
+            False,
+            {"sum"},
+        )
+
+        last_sum = 0.0
+        last_start_ts = 0.0
+        if statistic_id in last_stats and last_stats[statistic_id]:
+            row = last_stats[statistic_id][0]
+            last_sum = row.get("sum") or 0.0
+            last_start_ts = row.get("start") or 0.0
+
+        new_stats: list[StatisticData] = []
+        running_sum = last_sum
+        for entry in ok_entries:
+            start_utc = (
+                datetime.fromisoformat(entry.period_start)
+                .replace(tzinfo=_PORTAL_TZ)
+                .astimezone(dt_util.UTC)
+            )
+            if start_utc.timestamp() <= last_start_ts:
+                continue
+            running_sum += entry.quantity
+            new_stats.append(
+                StatisticData(
+                    start=start_utc,
+                    state=entry.quantity,
+                    sum=running_sum,
+                )
+            )
+
+        if not new_stats:
+            return
+
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=f"{self.config_entry.title} hourly energy",
+            source=DOMAIN,
+            statistic_id=statistic_id,
+            unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        )
+        async_add_external_statistics(self.hass, metadata, new_stats)
+        LOGGER.debug(
+            "Injected %d hourly statistics entries (running sum: %.3f kWh)",
+            len(new_stats),
+            running_sum,
         )
 
     async def _fetch_daily_usage(self) -> ConsumptionEntry | None:
@@ -200,12 +290,16 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
 
         return None
 
-    async def _fetch_hourly_usage(self) -> ConsumptionEntry | None:
-        """Fetch the latest available hourly usage.
+    async def _fetch_hourly_usage(
+        self,
+    ) -> tuple[ConsumptionEntry | None, list[ConsumptionEntry]]:
+        """Fetch hourly consumption entries for today and yesterday.
 
-        Fetches from yesterday to cover the midnight boundary — the last
-        completed hour (23:00-00:00) starts on the previous day, so data
-        won't appear in a today-only query until hour 00-01 completes.
+        Returns ``(latest_ok_entry, all_ok_entries)``. The latest entry drives
+        the sensor state; all entries are passed to ``_inject_hourly_statistics``
+        so every completed hour lands in the recorder at its actual timestamp.
+        Fetches from yesterday to cover the midnight boundary — the 23:00-00:00
+        hour starts on the previous day.
         """
         today = date.today()
         yesterday = today - timedelta(days=1)
@@ -215,11 +309,8 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             self.serviceplace_id, PERIOD_TYPE_HOURLY, yesterday, tomorrow
         )
 
-        for entry in reversed(entries):
-            if entry.quality_name.upper() == "OK":
-                return entry
-
-        return None
+        ok_entries = [e for e in entries if e.quality_name.upper() == "OK"]
+        return (ok_entries[-1] if ok_entries else None), ok_entries
 
     async def _fetch_monthly_usage(
         self,

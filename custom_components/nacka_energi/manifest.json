@@ -1,13 +1,13 @@
 {
   "domain": "nacka_energi",
   "name": "Nacka Energi",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@selleronom"],
   "config_flow": true,
   "documentation": "https://github.com/selleronom/nacka-energi",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/selleronom/nacka-energi/issues",
-  "after_dependencies": ["recorder"],
   "requirements": ["aiohttp>=3.8.0"],
   "version": "2.1.1"
 }

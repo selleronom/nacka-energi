@@ -26,6 +26,9 @@ ha-config/
 # API request dumps (contains session tokens)
 _request_dumps/
 
+# Local API/data dumps (contains serviceplace IDs and metering data)
+_dumps/
+
 # IDE
 .vscode/
 .idea/

@@ -227,14 +227,20 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             last_sum = row.get("sum") or 0.0
             last_start_ts = row.get("start") or 0.0
 
+        # Only append hours strictly newer than the latest one already recorded,
+        # continuing the cumulative sum. This keeps re-runs idempotent. Note the
+        # trade-off: an OK hour that arrives *after* a later hour was recorded
+        # (e.g. a mid-series gap that fills late, or an estimate revised to OK)
+        # is not back-filled, because doing so would require recomputing the sum
+        # of every subsequent hour. In practice the portal delivers hours in
+        # order in 2-hour batches and only the most recent hours are ever
+        # pending, so gaps occur at the tail and are picked up on the next poll.
         new_stats: list[StatisticData] = []
         running_sum = last_sum
+        prev_utc: datetime | None = None
         for entry in ok_entries:
-            start_utc = (
-                datetime.fromisoformat(entry.period_start)
-                .replace(tzinfo=_PORTAL_TZ)
-                .astimezone(dt_util.UTC)
-            )
+            start_utc = self._period_start_to_utc(entry.period_start, prev_utc)
+            prev_utc = start_utc
             if start_utc.timestamp() <= last_start_ts:
                 continue
             running_sum += entry.quantity
@@ -263,6 +269,22 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             len(new_stats),
             running_sum,
         )
+
+    @staticmethod
+    def _period_start_to_utc(period_start: str, prev_utc: datetime | None) -> datetime:
+        """Convert a naive local (Europe/Stockholm) period start to UTC.
+
+        During the autumn DST fall-back the 02:00-03:00 wall-clock hour repeats
+        and both occurrences share the same ``period_start`` string. They are
+        disambiguated by order: when converting yields a timestamp that is not
+        strictly after the previous entry, it must be the second (``fold=1``)
+        occurrence. Callers must pass entries in ascending period order.
+        """
+        naive = datetime.fromisoformat(period_start)
+        start_utc = naive.replace(tzinfo=_PORTAL_TZ).astimezone(dt_util.UTC)
+        if prev_utc is not None and start_utc <= prev_utc:
+            start_utc = naive.replace(tzinfo=_PORTAL_TZ, fold=1).astimezone(dt_util.UTC)
+        return start_utc
 
     async def _fetch_daily_usage(self) -> ConsumptionEntry | None:
         """Fetch the previous day's total usage."""
@@ -309,7 +331,13 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             self.serviceplace_id, PERIOD_TYPE_HOURLY, yesterday, tomorrow
         )
 
-        ok_entries = [e for e in entries if e.quality_name.upper() == "OK"]
+        # Sort ascending by period start so the running sum and dedup in
+        # _inject_hourly_statistics are correct, and so [-1] is genuinely the
+        # latest hour, regardless of the order the API returns entries in.
+        ok_entries = sorted(
+            (e for e in entries if e.quality_name.upper() == "OK"),
+            key=lambda e: e.period_start,
+        )
         return (ok_entries[-1] if ok_entries else None), ok_entries
 
     async def _fetch_monthly_usage(

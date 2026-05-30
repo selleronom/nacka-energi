@@ -63,7 +63,12 @@ ENERGY_SENSORS: tuple[NackaEnergiEnergySensorDescription, ...] = (
         key="hourly_usage",
         name="Hourly energy usage",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.MEASUREMENT,
+        # No state_class: this entity is a display-only "latest completed hour"
+        # value. Hourly long-term statistics are injected straight into the
+        # recorder as external statistics (coordinator._inject_hourly_statistics),
+        # so the entity must not generate competing internal statistics.
+        # (MEASUREMENT would be invalid anyway — ENERGY only permits TOTAL /
+        # TOTAL_INCREASING.)
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=3,
         consumption_fn=lambda data: data.hourly_usage,
@@ -224,6 +229,11 @@ class NackaEnergiEnergySensor(CoordinatorEntity[NackaEnergiCoordinator], SensorE
 
     @property
     def last_reset(self) -> datetime | None:
+        # last_reset is only valid for state_class TOTAL; HA raises for any
+        # other state_class (including None). The hourly sensor has no
+        # state_class, so it returns None here.
+        if self.entity_description.state_class is not SensorStateClass.TOTAL:
+            return None
         entry = self._consumption()
         return datetime.fromisoformat(entry.period_start) if entry else None
 

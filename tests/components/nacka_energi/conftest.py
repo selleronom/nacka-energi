@@ -223,7 +223,9 @@ def mock_data():
             created="2026-02-15T00:00:00",
             is_smear=False,
         ),
-        yearly_usage_kwh=500.0,
+        # Sum of the monthly entries above (Jan 100 + Feb 50); kept consistent
+        # so the coordinator's computed yearly total matches this fixture.
+        yearly_usage_kwh=150.0,
         latest_invoice=Invoice(
             invoice_ref="INV-123",
             invoice_amount=123.45,

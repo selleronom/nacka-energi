@@ -18,7 +18,8 @@ async def test_energy_sensors(mock_coordinator, mock_data):
     hourly_sensor_desc = next(d for d in ENERGY_SENSORS if d.key == "hourly_usage")
     sensor = NackaEnergiEnergySensor(coordinator, hourly_sensor_desc, entry)
     assert sensor.native_value == 0.387
-    assert sensor.last_reset == datetime.fromisoformat("2026-02-13T14:00:00")
+    # MEASUREMENT state_class: last_reset must not be set (HA rejects it otherwise).
+    assert sensor.last_reset is None
     assert sensor.extra_state_attributes["period_start"] == "2026-02-13T14:00:00"
     assert sensor.extra_state_attributes["period_end"] == "2026-02-13T15:00:00"
     assert sensor.extra_state_attributes["quality"] == "OK"
@@ -32,6 +33,8 @@ async def test_energy_sensors(mock_coordinator, mock_data):
     daily_sensor_desc = next(d for d in ENERGY_SENSORS if d.key == "daily_usage")
     sensor = NackaEnergiEnergySensor(coordinator, daily_sensor_desc, entry)
     assert sensor.native_value == 12.5
+    # TOTAL state_class: last_reset is set to the period start.
+    assert sensor.last_reset == datetime.fromisoformat("2026-02-13T00:00:00")
 
     # Monthly
     monthly_sensor_desc = next(d for d in ENERGY_SENSORS if d.key == "monthly_usage")

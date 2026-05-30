@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/selleronom/nacka-energi/issues",
   "after_dependencies": ["recorder"],
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "2.1.0"
+  "version": "2.1.1"
 }

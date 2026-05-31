@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -191,6 +192,34 @@ def test_period_start_to_utc_dst_fallback():
     second = NackaEnergiCoordinator._period_start_to_utc("2026-10-25T02:00:00", first)
     assert first.isoformat() == "2026-10-25T00:00:00+00:00"
     assert second.isoformat() == "2026-10-25T01:00:00+00:00"
+
+
+# HA's recorder validator for external statistic IDs (homeassistant.components.
+# recorder.statistics.VALID_STATISTIC_ID). Statistics injection fails with
+# "Invalid statistic_id" if the generated ID does not match this.
+_VALID_STATISTIC_ID = re.compile(r"^(?!.+__)(?!_)[\da-z_]+(?<!_):(?!_)[\da-z_]+(?<!_)$")
+
+
+@pytest.mark.parametrize(
+    "unique_id",
+    [
+        "uid123",
+        # Realistic opaque Base64 entity IDs: contain +, /, = and casing.
+        "aGVsbG8=",
+        "Zm9vL2Jhcg==",
+        "a+b/c==",
+        "SGVsbG8gV29ybGQ=",
+    ],
+)
+def test_statistic_id_is_valid(unique_id):
+    """Base64 unique_ids must yield IDs accepted by HA's validator.
+
+    Regression test for "Failed to inject hourly statistics: Invalid
+    statistic_id": runs of +, / and = padding must collapse to a single
+    underscore (no `__`) with no leading/trailing underscore.
+    """
+    statistic_id = NackaEnergiCoordinator._statistic_id(unique_id)
+    assert _VALID_STATISTIC_ID.match(statistic_id), statistic_id
 
 
 @pytest.mark.asyncio

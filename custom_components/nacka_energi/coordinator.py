@@ -213,8 +213,7 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
         coordinator polled. The running sum is continued from whatever the
         recorder already holds, so re-runs are idempotent.
         """
-        safe_id = re.sub(r"[^a-z0-9]", "_", self.config_entry.unique_id.lower())
-        statistic_id = f"{DOMAIN}:{safe_id}_hourly_energy"
+        statistic_id = self._statistic_id(self.config_entry.unique_id)
 
         recorder = get_instance(self.hass)
         last_stats = await recorder.async_add_executor_job(
@@ -276,6 +275,23 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             len(new_stats),
             running_sum,
         )
+
+    @staticmethod
+    def _statistic_id(unique_id: str) -> str:
+        """Build a valid HA statistic_id from the (Base64) config entry unique_id.
+
+        HA validates statistic IDs against
+        ``^(?!.+__)(?!_)[\\da-z_]+(?<!_):(?!_)[\\da-z_]+(?<!_)$`` — lowercase
+        alphanumerics and underscores only, with no leading/trailing underscore
+        and no consecutive underscores in either the domain or object_id. The
+        unique_id is an opaque Base64 string containing ``+``, ``/`` and ``=``;
+        replacing each such character with a separate ``_`` produces runs of
+        underscores (e.g. from ``==`` padding) that fail the validator. Each run
+        of non-alphanumeric characters is therefore collapsed to a single ``_``
+        and any leading/trailing ``_`` is stripped before the suffix is appended.
+        """
+        safe_id = re.sub(r"[^a-z0-9]+", "_", unique_id.lower()).strip("_")
+        return f"{DOMAIN}:{safe_id}_hourly_energy"
 
     @staticmethod
     def _period_start_to_utc(period_start: str, prev_utc: datetime | None) -> datetime:

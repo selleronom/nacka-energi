@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
@@ -256,11 +260,12 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             return
 
         metadata = StatisticMetaData(
-            has_mean=False,
+            mean_type=StatisticMeanType.NONE,
             has_sum=True,
             name=f"{self.config_entry.title} hourly energy",
             source=DOMAIN,
             statistic_id=statistic_id,
+            unit_class="energy",
             unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         )
         async_add_external_statistics(self.hass, metadata, new_stats)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import zoneinfo
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -212,7 +213,8 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
         coordinator polled. The running sum is continued from whatever the
         recorder already holds, so re-runs are idempotent.
         """
-        statistic_id = f"{DOMAIN}:{self.config_entry.unique_id}_hourly_energy"
+        safe_id = re.sub(r"[^a-z0-9]", "_", self.config_entry.unique_id.lower())
+        statistic_id = f"{DOMAIN}:{safe_id}_hourly_energy"
 
         recorder = get_instance(self.hass)
         last_stats = await recorder.async_add_executor_job(

@@ -173,10 +173,12 @@ class NackaEnergiCoordinator(DataUpdateCoordinator[NackaEnergiData]):
             LOGGER.debug("Failed to fetch user properties: %s", err)
             errors.append(f"user_properties: {err}")
 
-        # If ALL endpoints failed and we have no previous data, raise so
-        # the coordinator signals a problem instead of returning empty data.
+        # If ALL endpoints failed, raise so the coordinator signals a problem
+        # instead of silently serving stale data. This is a total failure
+        # (e.g. portal 503s or a broken re-auth), not a partial update, so we
+        # surface it regardless of whether previous data exists.
         total_endpoints = 5
-        if len(errors) == total_endpoints and previous is None:
+        if len(errors) == total_endpoints:
             raise UpdateFailed(f"All API endpoints failed: {'; '.join(errors)}")
 
         if errors:

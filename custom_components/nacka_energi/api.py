@@ -274,6 +274,19 @@ class NackaEnergiClient:
             for hist_resp in resp.history:
                 self._update_cookies(hist_resp)
 
+            if resp.status == 429:
+                raise NackaEnergiRateLimitError(
+                    "Rate limited by portal (429) on login page. Try again later."
+                )
+
+            # A non-200 login page (e.g. 503 maintenance) has no CSRF token to
+            # parse. Report the actual status so an upstream outage is obvious
+            # instead of the misleading "Could not find CSRF token" error.
+            if resp.status != 200:
+                raise NackaEnergiConnectionError(
+                    f"Login page returned status {resp.status}"
+                )
+
             text = await resp.text()
             # Be flexible when parsing the CSRF meta tag - attribute order
             # may change and the site can use single or double quotes.
